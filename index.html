@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pool Chemistry Tracker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        body { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+        details > summary { list-style: none; }
+        details > summary::-webkit-details-marker { display: none; }
+        details > summary .icon-rotate { transition: transform 0.2s ease-in-out; }
+        details[open] > summary .icon-rotate { transform: rotate(90deg); }
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #1e293b; }
+        ::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #64748b; }
+        .gauge-pointer { transition: left 0.5s ease-out; }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-200 font-sans">
+
+    <div id="app" class="max-w-3xl mx-auto p-4 sm:p-6 lg:p-8">
+        
+        <header class="text-center mb-6">
+            <h1 class="text-3xl sm:text-4xl font-bold text-cyan-400">Pool Chemistry Tracker</h1>
+            <p class="text-slate-400 mt-1">Using Taylor Test Kits</p>
+        </header>
+
+        <div id="appContent">
+            <nav class="flex flex-wrap justify-center bg-slate-800 rounded-lg p-1 mb-6 shadow-lg">
+                <button data-tab="newTestTab" class="tab-btn flex-1 text-center py-2 px-4 rounded-md text-sm sm:text-base font-semibold transition-all duration-300 bg-cyan-500 text-white">New Test</button>
+                <button data-tab="actionPlanTab" class="tab-btn flex-1 text-center py-2 px-4 rounded-md text-sm sm:text-base font-semibold transition-all duration-300 text-slate-300">Action Plan</button>
+                <button data-tab="lsiTab" class="tab-btn flex-1 text-center py-2 px-4 rounded-md text-sm sm:text-base font-semibold transition-all duration-300 text-slate-300">Water Balance</button>
+                <button data-tab="logTab" class="tab-btn flex-1 text-center py-2 px-4 rounded-md text-sm sm:text-base font-semibold transition-all duration-300 text-slate-300">Test Log</button>
+                <button data-tab="chartsTab" class="tab-btn flex-1 text-center py-2 px-4 rounded-md text-sm sm:text-base font-semibold transition-all duration-300 text-slate-300">Charts</button>
+                <button data-tab="chem101Tab" class="tab-btn flex-1 text-center py-2 px-4 rounded-md text-sm sm:text-base font-semibold transition-all duration-300 text-slate-300 w-full sm:w-auto mt-1 sm:mt-0">Chemistry 101</button>
+            </nav>
+
+            <main id="mainContent">
+                </main>
+        </div>
+    </div>
+    <div id="toast" class="fixed bottom-5 right-5 bg-green-500 text-white py-2 px-5 rounded-lg shadow-xl text-sm transition-transform duration-300 translate-x-[150%]"></div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const charts = {};
+    const appId = 'default-pool-tracker-standalone';
+    
+    const DOMElements = {
+        appContent: document.getElementById('appContent'),
+        mainContent: document.getElementById('mainContent'),
+        toast: document.getElementById('toast')
+    };
+
+    const mainHTML = `
+        <div id="newTestTab" class="tab-content space-y-4">
+             <div class="bg-slate-800 p-4 rounded-lg shadow-md">
+                <label for="kitSelector" class="block text-lg font-medium text-white">Select Your Taylor Test Kit</label>
+                <select id="kitSelector" class="mt-1 w-full bg-slate-700 border border-slate-600 rounded-md p-2 text-white focus:ring-cyan-500 focus:border-cyan-500">
+                    <option value="K-2006">K-2006 Complete Kit (FAS-DPD)</option>
+                    <option value="K-2005">K-2005 Complete Kit (DPD)</option>
+                    <option value="K-2000">K-2000 Service Kit</option>
+                    <option value="K-1000">K-1000 Basic Kit (OTO)</option>
+                </select>
+            </div>
+            <div class="bg-slate-800 p-4 rounded-lg shadow-md"><label for="poolVolume" class="block text-lg font-medium text-white">Pool Volume (Gallons)</label><p class="text-sm text-slate-400 mb-2">Required for accurate chemical dosage recommendations.</p><input type="number" id="poolVolume" value="14600" class="mt-1 w-full bg-slate-700 border border-slate-600 rounded-md p-2 text-white focus:ring-cyan-500 focus:border-cyan-500" placeholder="e.g., 15000"></div>
+            <div id="test-block-chlorine" class="space-y-4">
+                <div class="bg-slate-800 p-4 rounded-lg shadow-md">
+                    <details open>
+                        <summary class="cursor-pointer flex justify-between items-center"><h2 class="text-xl font-semibold text-white">Free & Combined Chlorine</h2><i data-lucide="chevron-right" class="icon-rotate text-cyan-400"></i></summary>
+                        <div class="mt-4 text-slate-300 text-sm space-y-2 border-t border-slate-700 pt-3">
+                            <p><strong class="text-cyan-400">Reagents (Yellow caps):</strong> R-0870, R-0871, R-0003</p>
+                            <ol class="list-decimal list-inside space-y-1">
+                                <li>Fill large tube to desired mark. For higher accuracy (0.2 ppm/drop), use <strong>25 mL</strong>. For faster results (0.5 ppm/drop), use <strong>10 mL</strong>.</li>
+                                <li>Add 2 dippers of R-0870 powder. Swirl until dissolved. If free chlorine is present, the sample will turn pink.</li>
+                                <li><strong>Free Chlorine (FC):</strong> Add R-0871 dropwise, swirling and counting after each drop, until the color changes from pink to colorless. Enter the number of drops for FC below.</li>
+                                <li><strong>Combined Chlorine (CC):</strong> To the same colorless sample, add 5 drops of R-0003. Swirl. If CC is present, sample will turn pink again.</li>
+                                <li>Continue adding R-0871 dropwise, swirling and counting, until the color changes back to colorless. Enter this second drop count for CC.</li>
+                            </ol>
+                        </div>
+                    </details>
+                    <div class="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div><label for="fc_sample_size" class="block text-sm font-medium text-slate-400">Sample Size</label>
+                            <select id="fc_sample_size" class="param-input mt-1 w-full bg-slate-700 border border-slate-600 rounded-md p-2 text-white">
+                                <option value="0.5">10 mL (0.5 ppm/drop)</option>
+                                <option value="0.2">25 mL (0.2 ppm/drop)</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4"><div><label for="fc_drops" class="block text-sm font-medium text-slate-400">Drops for FC</label><input type="number" id="fc_drops" class="param-input mt-1 w-full bg-slate-700 border border-slate-600 rounded-md p-2 text-white"></div><div class="bg-slate-900/50 p-3 rounded-md text-center flex flex-col justify-center"><span class="text-sm text-cyan-400">Free Chlorine</span><span id="fc_result" class="text-2xl font-bold">0.0 ppm</span></div></div><div class="mt-3"><div class="w-full h-3.5 rounded-full flex relative bg-slate-700"><div class="w-[33.3%] bg-red-600 rounded-l-full"></div><div class="w-[33.3%] bg-green-500"></div><div class="w-[33.3%] bg-orange-500 rounded-r-full"></div><div id="fc_gauge_pointer" class="gauge-pointer absolute top-[-2px] w-1 h-5 bg-white rounded-full border-2 border-slate-900" style="left: 0%;"></div></div><div class="text-xs text-slate-400 flex justify-between mt-1 px-1"><span>Low</span><span>Good</span><span>High</span></div></div><div class="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4"><div><label for="cc_drops" class="block text-sm font-medium text-slate-400">Drops for CC</label><input type="number" id="cc_drops" class="param-input mt-1 w-full bg-slate-700 border border-slate-600 rounded-md p-2 text-white"></div><div class="bg-slate-900/50 p-3 rounded-md text-center flex flex-col justify-center"><span class="text-sm text-cyan-400">Combined Chlorine</span><span id="cc_result" class="text-2xl font-bold">0.0 ppm</span></div></div><div class="mt-3"><div class="w-full h-3.5 rounded-full flex relative bg-slate-700"><div class="w-1/2 bg-green-500 rounded-l-full"></div><div class="w-1/2 bg-red-600 rounded-r-full"></div><div id="cc_gauge_pointer" class="gauge-pointer absolute top-[-2px] w-1 h-5 bg-white rounded-full border-2 border-slate-900" style="left: 0%;"></div></div><div class="text-xs text-slate-400 flex justify-between mt-1 px-1"><span>Good (&lt;0.5)</span><span>High (Needs Shock)</span></div></div>
+                </div>
+            </div>
+            <div class="grid md:grid-cols-2 gap-4">
+                <div id="test-block-ph" class="bg-slate-800 p-4 rounded-lg shadow-md h-full flex flex-col">
+                    <details>
+                        <summary class="cursor-pointer flex justify-between items-center"><h2 class="text-xl font-semibold text-white">pH</h2><i data-lucide="chevron-right" class="icon-rotate text-cyan-400"></i></summary>
+                        <div class="mt-4 text-slate-300 text-sm space-y-2 border-t border-slate-700 pt-3">
+                            <p><strong class="text-cyan-400">Reagent (Red cap):</strong> R-0004</p>
+                            <ol class="list-decimal list-inside space-y-1">
+                                <li>Fill large tube to the <strong>44 mL</strong> mark with sample water.</li>
+                                <li>Add 5 drops of R-0004. Cap and invert to mix.</li>
+                                <li>Compare the sample color to the color standards to find your pH value.</li>
+                            </ol>
+                        </div>
+                    </details>
+                    <div class="mt-4 flex-grow"><label for="ph_value" class="block text-sm font-medium text-slate-400">Enter pH Value</label><input type="number" step="0.1" id="ph_value" class="param-input mt-1 w-full bg-slate-700 border border-slate-600 rounded-md p-2 text-white"></div><div class="mt-3"><div class="w-full h-3.5 rounded-full flex relative bg-slate-700"><div class="w-1/3 bg-red-600 rounded-l-full"></div><div class="w-1/3 bg-green-500"></div><div class="w-1/3 bg-orange-500 rounded-r-full"></div><div id="ph_gauge_pointer" class="gauge-pointer absolute top-[-2px] w-1 h-5 bg-white rounded-full border-2 border-slate-900" style="left: 50%;"></div></div><div class="text-xs text-slate-400 flex justify-between mt-1 px-1"><span>&lt; 7.2</span><span>7.2-7.8</span><span>&gt; 7.8</span></div></div>
+                     <details class="mt-4 bg-slate-900/50 rounded-lg p-3">
+                        <summary class="cursor-pointer flex justify-between items-center text-sm font-semibold text-cyan-400">Advanced: Acid/Base Demand Test <i data-lucide="chevron-right" class="icon-rotate text-cyan-400 w-4 h-4"></i></summary>
+                        <div class="mt-3 pt-3 border-t border-slate-700 text-slate-300 text-xs space-y-3">
+                            <div>
+                                <p class="font-bold">Acid Demand (to LOWER pH)</p>
+                                <ol class="list-decimal list-inside space-y-1 mt-1">
+                                    <li>Use treated sample from pH test.</li>
+                                    <li>Add R-0005 (Red cap) dropwise, counting, until desired pH is matched.</li>
+                                </ol>
+                                <div class="mt-2"><label for="acid_demand_drops" class="block text-xs font-medium text-slate-400">Drops of R-0005</label><input type="number" id="acid_demand_drops" class="param-input mt-1 w-full bg-slate-700 border border-slate-600 rounded-md p-2 text-white text-sm"></div>
+                            </div>
+                            <div>
+                                <p class="font-bold">Base Demand (to RAISE pH)</p>
+                                <ol class="list-decimal list-inside space-y-1 mt-1">
+                                    <li>Use treated sample from pH test.</li>
+                                    <li>Add R-0006 (Red cap) dropwise, counting, until desired pH is matched.</li>
+                                </ol>
+                                <div class="mt-2"><label for="base_demand_drops" class="block text-xs font-medium text-slate-400">Drops of R-0006</label><input type="number" id="base_demand_drops" class="param-input mt-1 w-full bg-slate-700 border border-slate-600 rounded-md p-2 text-white text-sm"></div>
+                            </div>
+                        </div>
+                    </details>
+                </div>
+                <div id="test-block-bromine" class="bg-slate-800 p-4 rounded-lg shadow-md h-full flex flex-col">
+                    <details>
+                        <summary class="cursor-pointer flex justify-between items-center"><h2 class="text-xl font-semibold text-white">Total Bromine</h2><i data-lucide="chevron-right" class="icon-rotate text-cyan-400"></i></summary>
+                        <div class="mt-4 text-slate-300 text-sm space-y-2 border-t border-slate-700 pt-3">
+                            <p><strong class="text-cyan-400">Reagents (Yellow caps):</strong> R-0001, R-0002</p>
+                            <ol class="list-decimal list-inside space-y-1">
+                                <li>Fill small tube to <strong>9 mL</strong> mark with sample water.</li>
+                                <li>Add 5 drops of R-0001 and 5 drops of R-0002. Cap and invert to mix.</li>
+                                <li>Compare the sample color to the color standards.</li>
+                                <li class="text-xs text-slate-400 mt-1"><strong>If color is off-scale:</strong> Repeat test using 4.5 mL sample diluted to 9 mL with tap water, then multiply the final reading by 2.</li>
+                            </ol>
+                        </div>
+                    </details>
+                    <div class="mt-4 flex-grow"><label for="bromine_value" class="block text-sm font-medium text-slate-400">Enter Bromine Value (ppm)</label><input type="number" step="0.5" id="bromine_value" class="param-input mt-1 w-full bg-slate-700 border border-slate-600 rounded-md p-2 text-white"></div><div class="mt-3"><div class="w-full h-3.5 rounded-full flex relative bg-slate-700"><div class="w-1/3 bg-red-600 rounded-l-full"></div><div class="w-1/3 bg-green-500"></div><div class="w-1/3 bg-orange-500 rounded-r-full"></div><div id="bromine_gauge_pointer" class="gauge-pointer absolute top-[-2px] w-1 h-5 bg-white rounded-full border-2 border-slate-900" style="left: 50%;"></div></div><div class="text-xs text-slate-400 flex justify-between mt-1 px-1"><span>&lt; 2</span><span>2-6</span><span>&gt; 6</span></div></div>
+                </div>
+                <div id="test-block-ta" class="bg-slate-800 p-4 rounded-lg shadow-md h-full">
+                    <details>
+                        <summary class="cursor-pointer flex justify-between items-center"><h2 class="text-xl font-semibold text-white">Total Alkalinity</h2><i data-lucide="chevron-right" class="icon-rotate text-cyan-400"></i></summary>
+                        <div class="mt-4 text-slate-300 text-sm space-y-2 border-t border-slate-700 pt-3">
+                            <p><strong class="text-cyan-400">Reagents (Green caps):</strong> R-0007, R-0008, R-0009</p>
+                            <ol class="list-decimal list-inside space-y-1">
+                                <li>Fill large tube to 25 mL.</li>
+                                <li>Add 2 drops of R-0007 Sulfuric Acid. Swirl.</li>
+                                <li>Add 5 drops of R-0008 Alkalinity Indicator. Swirl (sample turns green).</li>
+                                <li>Add R-0009 Sulfuric Acid drop by drop, swirling and counting, until color changes to red.</li>
+                            </ol>
+                        </div>
+                    </details>
+                    <div class="mt-4 grid grid-cols-2 gap-4"><div><label for="ta_drops" class="block text-sm font-medium text-slate-400">Drops</label><input type="number" id="ta_drops" class="param-input mt-1 w-full bg-slate-700 border border-slate-600 rounded-md p-2 text-white"></div><div class="bg-slate-900/50 p-3 rounded-md text-center flex flex-col justify-center"><span class="text-sm text-cyan-400">TA Result</span><span id="ta_result" class="text-2xl font-bold">0 ppm</span></div></div><div class="mt-3"><div class="w-full h-3.5 rounded-full flex relative bg-slate-700"><div class="w-1/3 bg-red-600 rounded-l-full"></div><div class="w-1/3 bg-green-500"></div><div class="w-1/3 bg-orange-500 rounded-r-full"></div><div id="ta_gauge_pointer" class="gauge-pointer absolute top-[-2px] w-1 h-5 bg-white rounded-full border-2 border-slate-900" style="left: 50%;"></div></div><div class="text-xs text-slate-400 flex justify-between mt-1 px-1"><span>&lt; 80</span><span>80-120</span><span>&gt; 120</span></div></div>
+                </div>
+                <div id="test-block-ch" class="bg-slate-800 p-4 rounded-lg shadow-md h-full">
+                    <details>
+                        <summary class="cursor-pointer flex justify-between items-center"><h2 class="text-xl font-semibold text-white">Calcium Hardness</h2><i data-lucide="chevron-right" class="icon-rotate text-cyan-400"></i></summary>
+                        <div class="mt-4 text-slate-300 text-sm space-y-2 border-t border-slate-700 pt-3">
+                            <p><strong class="text-cyan-400">Reagents (Blue caps):</strong> R-0010, R-0011L, R-0012</p>
+                            <ol class="list-decimal list-inside space-y-1">
+                                <li>Fill large tube to 25 mL.</li>
+                                <li>Add 20 drops of R-0010 Calcium Buffer. Swirl.</li>
+                                <li>Add 5 drops of R-0011L Calcium Indicator. Swirl (sample turns red).</li>
+                                <li>Add R-0012 Hardness Reagent drop by drop, swirling and counting, until color changes to blue.</li>
+                            </ol>
+                        </div>
+                    </details>
+                    <div class="mt-4 grid grid-cols-2 gap-4"><div><label for="ch_drops" class="block text-sm font-medium text-slate-400">Drops</label><input type="number" id="ch_drops" class="param-input mt-1 w-full bg-slate-700 border border-slate-600 rounded-md p-2 text-white"></div><div class="bg-slate-900/50 p-3 rounded-md text-center flex flex-col justify-center"><span class="text-sm text-cyan-400">CH Result</span><span id="ch_result" class="text-2xl font-bold">0 ppm</span></div></div><div class="mt-3"><div class="w-full h-3.5 rounded-full flex relative bg-slate-700"><div class="w-1/3 bg-red-600 rounded-l-full"></div><div class="w-1/3 bg-green-500"></div><div class="w-1/3 bg-orange-500 rounded-r-full"></div><div id="ch_gauge_pointer" class="gauge-pointer absolute top-[-2px] w-1 h-5 bg-white rounded-full border-2 border-slate-900" style="left: 50%;"></div></div><div class="text-xs text-slate-400 flex justify-between mt-1 px-1"><span>&lt; 200</span><span>200-400</span><span>&gt; 400</span></div></div>
+                </div>
+                <div id="test-block-cya" class="bg-slate-800 p-4 rounded-lg shadow-md h-full">
+                    <details>
+                        <summary class="cursor-pointer flex justify-between items-center"><h2 class="text-xl font-semibold text-white">Cyanuric Acid</h2><i data-lucide="chevron-right" class="icon-rotate text-cyan-400"></i></summary>
+                        <div class="mt-4 text-slate-300 text-sm space-y-2 border-t border-slate-700 pt-3">
+                            <p><strong class="text-cyan-400">Reagent (White cap):</strong> R-0013</p>
+                            <ol class="list-decimal list-inside space-y-1">
+                                <li>Fill bottle (#9191) to 7 mL mark with sample water.</li>
+                                <li>Add R-0013 Cyanuric Acid Reagent to the 14 mL mark. Cap and mix for 30 seconds.</li>
+                                <li>Transfer cloudy solution to small tube until the black dot on the bottom just disappears when viewed from the top.</li>
+                                <li>Read the ppm level from the scale on the side of the tube.</li>
+                            </ol>
+                        </div>
+                    </details>
+                    <div class="mt-4"><label for="cya_value" class="block text-sm font-medium text-slate-400">Enter CYA Value (ppm)</label><input type="number" id="cya_value" class="param-input mt-1 w-full bg-slate-700 border border-slate-600 rounded-md p-2 text-white"></div><div class="mt-3"><div class="w-full h-3.5 rounded-full flex relative bg-slate-700"><div class="w-1/3 bg-red-600 rounded-l-full"></div><div class="w-1/3 bg-green-500"></div><div class="w-1/3 bg-orange-500 rounded-r-full"></div><div id="cya_gauge_pointer" class="gauge-pointer absolute top-[-2px] w-1 h-5 bg-white rounded-full border-2 border-slate-900" style="left: 50%;"></div></div><div class="text-xs text-slate-400 flex justify-between mt-1 px-1"><span>&lt; 30</span><span>30-50</span><span>&gt; 50</span></div></div>
+                </div>
+            </div>
+            <div class="pt-4"><button id="saveTestBtn" class="w-full bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-3 px-4 rounded-lg transition-colors duration-300 flex items-center justify-center gap-2"><i data-lucide="save"></i>Save Test Results</button></div>
+        </div>
+        <div id="actionPlanTab" class="tab-content hidden"><div class="bg-slate-800 p-4 rounded-lg shadow-md"><h2 class="text-xl font-semibold text-white text-center">Chemical Recommendations</h2><p class="text-center text-sm text-slate-400 mt-1 mb-4">A prioritized list of actions based on your test results.</p><div id="recommendationsContainer" class="space-y-4"></div></div></div>
+        <div id="lsiTab" class="tab-content hidden"><div class="bg-slate-800 p-4 rounded-lg shadow-md"><h2 class="text-xl font-semibold text-white text-center">Water Balance Calculator (LSI)</h2><p class="text-center text-sm text-slate-400 mt-1 mb-4">Calculates using values from the 'New Test' tab.</p><div class="grid sm:grid-cols-2 gap-4"><div><label for="temp_value" class="block text-sm font-medium text-slate-400">Water Temperature (°F)</label><input type="number" id="temp_value" class="param-input mt-1 w-full bg-slate-700 border border-slate-600 rounded-md p-2 text-white" placeholder="e.g., 82"></div><div><label for="tds_value" class="block text-sm font-medium text-slate-400">Total Dissolved Solids (ppm)</label><input type="number" id="tds_value" class="param-input mt-1 w-full bg-slate-700 border border-slate-600 rounded-md p-2 text-white" placeholder="Optional, defaults to 500"></div></div><div class="mt-6 bg-slate-900/50 p-4 rounded-md text-center"><p class="text-sm text-cyan-400">Langelier Saturation Index (LSI)</p><p id="lsi_result_value" class="text-4xl font-bold my-1">0.00</p><p id="lsi_result_text" class="font-semibold">Enter values to see status</p></div><div class="mt-4 text-xs text-slate-500 grid grid-cols-3 text-center"><div><strong class="text-red-400">&lt; -0.3</strong><br>Corrosive</div><div><strong class="text-green-400">-0.3 to +0.3</strong><br>Balanced</div><div><strong class="text-orange-400">&gt; +0.3</strong><br>Scaling</div></div></div></div>
+        <div id="logTab" class="tab-content hidden"><div id="logContainer" class="space-y-4"><p class="text-center text-slate-400 py-8">No saved tests yet.</p></div></div>
+        <div id="chartsTab" class="tab-content hidden space-y-6"></div>
+        <div id="chem101Tab" class="tab-content hidden space-y-4">
+            <div class="bg-slate-800 p-4 rounded-lg shadow-md">
+                <h2 class="text-2xl font-bold text-cyan-400 text-center mb-4">Pool Chemistry 101</h2>
+                <details class="bg-slate-900/50 rounded-lg p-3 mb-3">
+                    <summary class="cursor-pointer flex justify-between items-center font-semibold text-lg text-white">Chlorine (FC & CC)<i data-lucide="chevron-right" class="icon-rotate text-cyan-400"></i></summary>
+                    <div class="mt-3 pt-3 border-t border-slate-700 text-slate-300 text-sm space-y-2">
+                        <p><strong>What it is:</strong> Free Chlorine (FC) is the active sanitizer that kills germs and algae. Combined Chlorine (CC), or chloramines, is the "used-up" chlorine that creates the classic "pool smell" and irritates eyes.</p>
+                        <p><strong>Why it matters:</strong> Too little FC allows germs to multiply. High CC means the water is full of contaminants and the sanitizer is ineffective. The goal is to maximize FC and minimize CC.</p>
+                        <p><strong>Ideal Range:</strong> FC should be 3-5 ppm (or 7.5% of your CYA level). CC should always be below 0.5 ppm. If CC is high, you must "shock" the pool to break it down.</p>
+                    </div>
+                </details>
+                <details class="bg-slate-900/50 rounded-lg p-3 mb-3">
+                    <summary class="cursor-pointer flex justify-between items-center font-semibold text-lg text-white">Bromine<i data-lucide="chevron-right" class="icon-rotate text-cyan-400"></i></summary>
+                    <div class="mt-3 pt-3 border-t border-slate-700 text-slate-300 text-sm space-y-2">
+                        <p><strong>What it is:</strong> Bromine is another halogen sanitizer, similar to chlorine. It's often used in spas and hot tubs because it remains stable at higher temperatures.</p>
+                        <p><strong>Why it matters:</strong> It effectively kills bacteria and algae. Unlike chlorine, its combined form (bromamines) still provides sanitizing power, which means less "shocking" is typically needed. It is also more effective over a wider pH range than chlorine.</p>
+                        <p><strong>Ideal Range:</strong> 2.0 to 6.0 ppm for pools, and 4.0 to 6.0 ppm for spas.</p>
+                    </div>
+                </details>
+                <details class="bg-slate-900/50 rounded-lg p-3 mb-3">
+                    <summary class="cursor-pointer flex justify-between items-center font-semibold text-lg text-white">pH & Acid/Base Demand<i data-lucide="chevron-right" class="icon-rotate text-cyan-400"></i></summary>
+                    <div class="mt-3 pt-3 border-t border-slate-700 text-slate-300 text-sm space-y-2">
+                        <p><strong>What it is:</strong> pH is a measure of how acidic or basic your water is on a scale from 0 to 14.</p>
+                        <p><strong>Why it matters:</strong> pH is critical for sanitizer effectiveness and swimmer comfort. If pH is too high, chlorine becomes sluggish. If it's too low, the water becomes acidic and can damage pool equipment.</p>
+                         <p><strong>What is an Acid/Base Demand Test?</strong> While the pH test tells you *where* your pH is, the demand test tells you *exactly how much* acid or base to add to reach your target pH (e.g., 7.5). It's more precise than a generic calculation, as it accounts for the unique buffering capacity of your water.</p>
+                        <p><strong>Ideal Range:</strong> 7.2 to 7.8. The sweet spot is 7.4-7.6 for swimmer comfort and sanitizer efficiency.</p>
+                    </div>
+                </details>
+                <details class="bg-slate-900/50 rounded-lg p-3 mb-3">
+                    <summary class="cursor-pointer flex justify-between items-center font-semibold text-lg text-white">Total Alkalinity (TA)<i data-lucide="chevron-right" class="icon-rotate text-cyan-400"></i></summary>
+                    <div class="mt-3 pt-3 border-t border-slate-700 text-slate-300 text-sm space-y-2">
+                        <p><strong>What it is:</strong> A measure of dissolved alkaline substances in the water. Think of it as a "buffer" or "anchor" for your pH.</p>
+                        <p><strong>Why it matters:</strong> Proper TA levels prevent the pH from swinging wildly. If TA is too low, your pH will be unstable. If TA is too high, the pH will be very difficult to change.</p>
+                        <p><strong>Ideal Range:</strong> 80 to 120 ppm.</p>
+                    </div>
+                </details>
+                 <details class="bg-slate-900/50 rounded-lg p-3 mb-3">
+                    <summary class="cursor-pointer flex justify-between items-center font-semibold text-lg text-white">Calcium Hardness (CH)<i data-lucide="chevron-right" class="icon-rotate text-cyan-400"></i></summary>
+                    <div class="mt-3 pt-3 border-t border-slate-700 text-slate-300 text-sm space-y-2">
+                        <p><strong>What it is:</strong> The amount of dissolved calcium in the pool water.</p>
+                        <p><strong>Why it matters:</strong> If CH is too low, the water will try to get calcium from anywhere it can, corroding plaster surfaces and equipment. If it's too high, it can cause cloudy water and scaly deposits.</p>
+                        <p><strong>Ideal Range:</strong> 200 to 400 ppm.</p>
+                    </div>
+                </details>
+                 <details class="bg-slate-900/50 rounded-lg p-3 mb-3">
+                    <summary class="cursor-pointer flex justify-between items-center font-semibold text-lg text-white">Cyanuric Acid (CYA)<i data-lucide="chevron-right" class="icon-rotate text-cyan-400"></i></summary>
+                    <div class="mt-3 pt-3 border-t border-slate-700 text-slate-300 text-sm space-y-2">
+                        <p><strong>What it is:</strong> Often called "stabilizer" or "conditioner". It acts like a sunscreen for your chlorine.</p>
+                        <p><strong>Why it matters:</strong> Without CYA, sunlight can destroy most of your free chlorine in hours. CYA protects it, but too much CYA can make your chlorine slow and ineffective.</p>
+                        <p><strong>Ideal Range:</strong> 30 to 50 ppm for a typical chlorinated pool.</p>
+                    </div>
+                </details>
+                <details class="bg-slate-900/50 rounded-lg p-3">
+                    <summary class="cursor-pointer flex justify-between items-center font-semibold text-lg text-white">How It All Works Together<i data-lucide="chevron-right" class="icon-rotate text-cyan-400"></i></summary>
+                    <div class="mt-3 pt-3 border-t border-slate-700 text-slate-300 text-sm space-y-2">
+                       <p>Think of your pool chemistry as a balancing act. Each parameter affects the others:</p>
+                       <ul class="list-disc list-inside space-y-1 pl-2">
+                           <li><strong>Total Alkalinity</strong> is the foundation. Adjust it first, as it stabilizes your pH.</li>
+                           <li><strong>pH</strong> is the gatekeeper. It determines how effective your chlorine is. After TA is set, adjust your pH.</li>
+                           <li><strong>Free Chlorine</strong> is your worker bee, but its performance depends on pH and CYA.</li>
+                           <li><strong>CYA</strong> is chlorine's protector, but also its leash. The more CYA you have, the more Free Chlorine you need.</li>
+                           <li><strong>Calcium Hardness</strong> protects your pool surfaces but doesn't change as quickly.</li>
+                       </ul>
+                       <p class="pt-2">The **Water Balance (LSI)** calculation on the other tab takes all of these into account to give you a single score. A score near zero means your water is neither corrosive nor scale-forming.</p>
+                    </div>
+                </details>
+            </div>
+        </div>`;
+    
+    const KITS = {
+        'K-2006': { name: 'Complete Kit (FAS-DPD)', tests: ['chlorine', 'ph', 'ta', 'ch', 'cya', 'bromine'] },
+        'K-2005': { name: 'Complete Kit (DPD)', tests: ['chlorine', 'ph', 'ta', 'ch', 'cya', 'bromine'] },
+        'K-2000': { name: 'Service Kit', tests: ['chlorine', 'ph', 'ta'] },
+        'K-1000': { name: 'Basic Kit (OTO)', tests: ['chlorine', 'ph', 'bromine'] }
+    };
+
+    const appLogic = {
+        showToast(message) { DOMElements.toast.textContent = message; DOMElements.toast.classList.remove('translate-x-[150%]'); setTimeout(() => { DOMElements.toast.classList.add('translate-x-[150%]'); }, 3000); },
+        getResults() {
+            const fcMultiplier = parseFloat(document.getElementById('fc_sample_size').value) || 0.5;
+            const fcDrops = parseFloat(document.getElementById('fc_drops').value) || 0;
+            const ccDrops = parseFloat(document.getElementById('cc_drops').value) || 0;
+            const taDrops = parseFloat(document.getElementById('ta_drops').value) || 0;
+            const chDrops = parseFloat(document.getElementById('ch_drops').value) || 0;
+
+            return {
+                fc: parseFloat((fcDrops * fcMultiplier).toFixed(1)),
+                cc: parseFloat((ccDrops * fcMultiplier).toFixed(1)),
+                ph: parseFloat(document.getElementById('ph_value').value) || 0,
+                bromine: parseFloat(document.getElementById('bromine_value').value) || 0,
+                ta: Math.round(taDrops * 10),
+                ch: Math.round(chDrops * 10),
+                cya: parseFloat(document.getElementById('cya_value').value) || 0,
+                acid_demand_drops: parseFloat(document.getElementById('acid_demand_drops').value) || 0,
+                base_demand_drops: parseFloat(document.getElementById('base_demand_drops').value) || 0,
+            };
+        },
+        updateResultDisplays(results) {
+            document.getElementById('fc_result').textContent = `${results.fc.toFixed(1)} ppm`;
+            document.getElementById('cc_result').textContent = `${results.cc.toFixed(1)} ppm`;
+            document.getElementById('ta_result').textContent = `${results.ta} ppm`;
+            document.getElementById('ch_result').textContent = `${results.ch} ppm`;
+        },
+        updateGauges(results) {
+             const getPointerPercent = (val, min, max) => {
+                if (val === null || isNaN(val)) return '50%';
+                const percent = ((val - min) / (max - min)) * 100;
+                return `${Math.max(0, Math.min(100, percent))}%`;
+            };
+            document.getElementById('fc_gauge_pointer').style.left = getPointerPercent(results.fc, 0, 15);
+            document.getElementById('cc_gauge_pointer').style.left = getPointerPercent(results.cc, 0, 1);
+            document.getElementById('ph_gauge_pointer').style.left = getPointerPercent(results.ph, 7.0, 8.0);
+            document.getElementById('bromine_gauge_pointer').style.left = getPointerPercent(results.bromine, 0, 10);
+            document.getElementById('ta_gauge_pointer').style.left = getPointerPercent(results.ta, 50, 150);
+            document.getElementById('ch_gauge_pointer').style.left = getPointerPercent(results.ch, 100, 500);
+            document.getElementById('cya_gauge_pointer').style.left = getPointerPercent(results.cya, 20, 80);
+        },
+        calculateLSI(els) {
+            const results = this.getResults();
+            const temp = parseFloat(document.getElementById('temp_value').value) || 0;
+            const tds = parseFloat(document.getElementById('tds_value').value) || 500;
+            if (!results.ph || !temp || !results.ch || !results.ta ) { els.lsiResultValue.textContent = '0.00'; els.lsiResultText.textContent = 'Enter values to see status'; els.lsiResultText.className = 'font-semibold'; return; }
+            const getFactor = (value, table) => { for (const row of table) { if (value <= row[0]) return row[1]; } return table[table.length - 1][1]; };
+            const tempFactorTable = [[32,0.0],[38,0.1],[46,0.2],[53,0.3],[60,0.4],[66,0.5],[76,0.6],[84,0.7],[94,0.8],[105,0.9]];
+            const chFactorTable = [[25,1.0],[50,1.3],[100,1.6],[200,1.9],[400,2.2],[800,2.5],[1000,2.6]];
+            const taFactorTable = [[25,1.4],[50,1.7],[100,2.0],[200,2.3],[400,2.6],[800,2.9],[1000,3.0]];
+            const tf = getFactor(temp, tempFactorTable);
+            const cf = getFactor(results.ch, chFactorTable);
+            const cyaCorrectionFactor = results.cya > 0 ? (results.cya * 0.33) : 0;
+            const correctedTA = Math.max(1, results.ta - cyaCorrectionFactor);
+            const af = getFactor(correctedTA, taFactorTable);
+            const tdsf = tds < 1000 ? 12.1 : 12.2;
+            const lsi = (results.ph + tf + cf + af - tdsf).toFixed(2);
+            els.lsiResultValue.textContent = lsi;
+            if (lsi < -0.3) { els.lsiResultText.textContent = 'Corrosive'; els.lsiResultText.className = 'font-semibold text-red-400'; }
+            else if (lsi > 0.3) { els.lsiResultText.textContent = 'Scaling'; els.lsiResultText.className = 'font-semibold text-orange-400'; }
+            else { els.lsiResultText.textContent = 'Balanced'; els.lsiResultText.className = 'font-semibold text-green-400'; }
+        },
+        generateActionPlan(els) {
+            const V = parseFloat(els.poolVolume.value);
+            if (!V || V <= 0) { els.recommendationsContainer.innerHTML = `<p class="text-center text-orange-400 p-4 bg-slate-900/50 rounded-md">Please enter a valid Pool Volume on the 'New Test' tab to get recommendations.</p>`; return; }
+            
+            const actions = [];
+            const V10k = V / 10000;
+            const results = this.getResults();
+
+            const formatAmount = (amount, unit) => {
+                if (!amount || isNaN(amount)) return `0 ${unit}`;
+                if (unit === 'oz' && amount >= 16) return `${(amount / 16).toFixed(1)} lbs`;
+                if (unit === 'fl oz' && amount >= 128) return `${(amount / 128).toFixed(1)} gal`;
+                if (unit === 'fl oz' && amount >= 32) return `${(amount / 32).toFixed(1)} quarts`;
+                return `${Math.round(amount)} ${unit}`;
+            };
+            
+            const createDropdownHTML = (id, title, status, ppm, options) => {
+                const selectOptions = options.map(opt => `<option value="${opt.id}" ${opt.selected ? 'selected' : ''}>${opt.name}</option>`).join('');
+                return `
+                    <div class="bg-slate-900/50 p-3 rounded-lg" data-action-id="${id}">
+                        <h3 class="font-bold ${status}">${title} (${ppm})</h3>
+                        <div class="flex items-center gap-2 mt-2">
+                            <select class="action-dropdown bg-slate-700 border border-slate-600 rounded-md p-1 text-xs text-white">
+                                ${selectOptions}
+                            </select>
+                            <p class="text-sm flex-1">➡️ <span class="dosage-text"></span></p>
+                        </div>
+                    </div>`;
+            };
+
+            if (results.cc >= 0.5) { const targetFC = Math.max(10, results.cya * 0.4); const amountNeeded = targetFC - results.fc; if (amountNeeded > 0) { actions.push({ priority: 1, html: `<div class="bg-red-900/50 p-3 rounded-lg border border-red-500"><h3 class="font-bold text-red-400">High Combined Chlorine - SHOCK REQUIRED</h3><p class="text-sm">Your CC is ${results.cc} ppm. You need to shock the pool to a Free Chlorine level of <strong>${targetFC.toFixed(1)} ppm</strong>.</p><p class="text-sm mt-1">➡️ Use the "Free Chlorine is Low" recommendation below to calculate the required dosage.</p></div>` }); } }
+            
+            if (results.ta < 80) { const ppmNeeded = 90 - results.ta; actions.push({priority: 2, type: 'raise_ta', ppmNeeded, html: `<div class="bg-slate-900/50 p-3 rounded-lg"><h3 class="font-bold text-orange-400">Total Alkalinity is Low (${results.ta} ppm)</h3><p class="text-sm">➡️ Add <strong>${formatAmount((1.25 * V10k * ppmNeeded), 'oz')}</strong> of Baking Soda to raise to 90 ppm.</p></div>`}); } else if (results.ta > 120) { actions.push({priority: 2, type: 'high_ta', html: `<div class="bg-slate-900/50 p-3 rounded-lg"><h3 class="font-bold text-orange-400">Total Alkalinity is High (${results.ta} ppm)</h3><p class="text-sm">To lower, use Muriatic Acid to bring pH to 7.0-7.2, then aerate water to raise pH back up. Repeat if needed.</p></div>`}); } else { actions.push({priority: 2, type: 'ok_ta', html: `<div class="bg-slate-900/50 p-3 rounded-lg"><h3 class="font-bold text-green-400">Total Alkalinity is Good (${results.ta} ppm)</h3><p class="text-sm">No action needed.</p></div>`}); }
+
+            if (results.base_demand_drops > 0) {
+                 const sodaAsh = results.base_demand_drops * 14 * V10k;
+                 actions.push({priority: 3, html: `<div class="bg-slate-900/50 p-3 rounded-lg"><h3 class="font-bold text-orange-400">pH is Low (${results.ph}) - Base Demand Test</h3><p class="text-sm">➡️ Add <strong>${formatAmount(sodaAsh, 'oz')}</strong> of Soda Ash based on your demand test.</p></div>`});
+            } else if (results.acid_demand_drops > 0) {
+                const acidAmount = results.acid_demand_drops * 12 * V10k;
+                actions.push({priority: 3, html: `<div class="bg-slate-900/50 p-3 rounded-lg"><h3 class="font-bold text-orange-400">pH is High (${results.ph}) - Acid Demand Test</h3><p class="text-sm">➡️ Add <strong>${formatAmount(acidAmount, 'fl oz')}</strong> of Muriatic Acid (31.45%) based on your demand test.</p></div>`});
+            } else if (results.ph < 7.2) { const sodaAsh = (7.4 - results.ph) / 0.2 * 6 * V10k; actions.push({priority: 3, html: `<div class="bg-slate-900/50 p-3 rounded-lg"><h3 class="font-bold text-orange-400">pH is Low (${results.ph})</h3><p class="text-sm">➡️ Add <strong>${formatAmount(sodaAsh, 'oz')}</strong> of Soda Ash to raise to 7.4.</p></div>`}); } else if (results.ph > 7.8) { const effectiveTA = results.ta > 0 ? results.ta : 100; const acidAmount = (results.ph - 7.6) / 0.2 * (effectiveTA / 100) * 16 * V10k; const acidNote = results.ta > 0 ? "" : " <em class='text-xs text-slate-400'>(Note: Assuming 100 ppm TA.)</em>"; actions.push({priority: 3, html: `<div class="bg-slate-900/50 p-3 rounded-lg"><h3 class="font-bold text-orange-400">pH is High (${results.ph})</h3><p class="text-sm">➡️ Add <strong>${formatAmount(acidAmount, 'fl oz')}</strong> of Muriatic Acid (31.45%) to lower to 7.6.${acidNote}</p></div>`}); } else { actions.push({priority: 3, html: `<div class="bg-slate-900/50 p-3 rounded-lg"><h3 class="font-bold text-green-400">pH is Good (${results.ph})</h3><p class="text-sm">No action needed.</p></div>`}); }
+            
+            const targetFC = Math.max(2, results.cya * 0.075);
+            if (results.fc < targetFC) { 
+                const ppmNeeded = targetFC - results.fc;
+                actions.push({
+                    priority: 4,
+                    html: createDropdownHTML('raise_fc', 'Free Chlorine is Low', 'text-orange-400', `${results.fc} ppm`, [
+                        {id: 'default_chlorine', name: 'Default (Liquid Chlorine 12.5%)'},
+                        {id: 'pool_essentials_chlorine', name: 'Pool Essentials Liquid Chlorine (10%)'}
+                    ]),
+                    data: { ppmNeeded, V10k }
+                });
+            } else if (actions.every(a => a.priority !== 1)) {
+                actions.push({priority: 4, html: `<div class="bg-slate-900/50 p-3 rounded-lg"><h3 class="font-bold text-green-400">Free Chlorine is Good (${results.fc} ppm)</h3><p class="text-sm">Ideal FC for your CYA is ~${targetFC.toFixed(1)} ppm. No action needed.</p></div>`});
+            }
+
+            if (results.ch < 200) { 
+                const ppmNeeded = 250 - results.ch; 
+                actions.push({
+                    priority: 5,
+                    html: createDropdownHTML('raise_ch', 'Calcium Hardness is Low', 'text-yellow-400', `${results.ch} ppm`, [
+                        {id: 'default_ch', name: 'Default (Calcium Chloride)'},
+                        {id: 'clorox_ch', name: 'Clorox Calcium Hardness Increaser'}
+                    ]),
+                    data: { ppmNeeded, V10k }
+                });
+            } else if (results.ch > 400) { actions.push({priority: 5, html: `<div class="bg-slate-900/50 p-3 rounded-lg"><h3 class="font-bold text-yellow-400">Calcium Hardness is High (${results.ch} ppm)</h3><p class="text-sm">The only way to lower CH is to partially drain and refill the pool with fresh water.</p></div>`}); }
+            
+            if (results.cya < 30) { 
+                const ppmNeeded = 40 - results.cya;
+                actions.push({
+                    priority: 5,
+                    html: createDropdownHTML('raise_cya', 'Cyanuric Acid is Low', 'text-yellow-400', `${results.cya} ppm`, [
+                        {id: 'default_cya', name: 'Default (Stabilizer)'},
+                        {id: 'clorox_cya', name: 'Clorox Stabilizer'}
+                    ]),
+                    data: { ppmNeeded, V10k }
+                });
+            } else if (results.cya > 80) { actions.push({priority: 5, html: `<div class="bg-slate-900/50 p-3 rounded-lg"><h3 class="font-bold text-yellow-400">Cyanuric Acid is High (${results.cya} ppm)</h3><p class="text-sm">The only way to lower CYA is to partially drain and refill the pool with fresh water.</p></div>`}); }
+            
+            els.recommendationsContainer.innerHTML = actions.sort((a, b) => a.priority - b.priority).map(a => a.html).join('');
+            
+            actions.forEach(action => {
+                if(action.data) {
+                    const container = els.recommendationsContainer.querySelector(`[data-action-id="${action.html.match(/data-action-id="([^"]+)"/)[1]}"]`);
+                    if(container) {
+                        const select = container.querySelector('select');
+                        this.updateDosage(select, action.data.ppmNeeded, action.data.V10k);
+                    }
+                }
+            });
+        },
+        updateDosage(selectElement, ppmNeeded, V10k) {
+            const container = selectElement.closest('[data-action-id]');
+            const actionId = container.dataset.actionId;
+            const dosageSpan = container.querySelector('.dosage-text');
+            const formatAmount = (amount, unit) => { if (!amount || isNaN(amount)) return `0 ${unit}`; if (unit === 'oz' && amount >= 16) return `Add <strong>${(amount / 16).toFixed(1)} lbs</strong>`; if (unit === 'fl oz' && amount >= 128) return `Add <strong>${(amount / 128).toFixed(1)} gal</strong>`; if (unit === 'fl oz' && amount >= 32) return `Add <strong>${(amount / 32).toFixed(1)} quarts</strong>`; return `Add <strong>${Math.round(amount)} ${unit}</strong>`; };
+            let dosageText = '';
+
+            switch(actionId) {
+                case 'raise_fc':
+                    const strength = selectElement.value === 'pool_essentials_chlorine' ? 0.10 : 0.125;
+                    const liquidChlorine = V10k * ppmNeeded * (128 / (strength * 100));
+                    dosageText = `${formatAmount(liquidChlorine, 'fl oz')} of ${selectElement.options[selectElement.selectedIndex].text}.`;
+                    break;
+                case 'raise_ch':
+                    const calciumChloride = 1.2 * V10k * (ppmNeeded / 10);
+                    dosageText = `${formatAmount(calciumChloride, 'oz')} of ${selectElement.options[selectElement.selectedIndex].text}.`;
+                    break;
+                case 'raise_cya':
+                    const stabilizer = 1.3 * V10k * (ppmNeeded / 10);
+                    dosageText = `${formatAmount(stabilizer, 'oz')} of ${selectElement.options[selectElement.selectedIndex].text}. Place in a sock in the skimmer.`;
+                    break;
+            }
+            dosageSpan.innerHTML = dosageText;
+        },
+        clearInputs(els) { 
+            document.querySelectorAll('.param-input').forEach(i => { 
+                if(!i.id.includes('sample_size') && (i.id.includes('drops') || i.id.includes('value'))) i.value = ''; 
+            }); 
+            this.handleInputChange(els); 
+        },
+        saveTest(els) { 
+            const results = this.getResults();
+            const newTest = { ...results, id: Date.now(), timestamp: new Date().toISOString() };
+            let tests = JSON.parse(localStorage.getItem('poolTests')) || [];
+            tests.push(newTest);
+            localStorage.setItem('poolTests', JSON.stringify(tests));
+            this.showToast('Test saved locally!'); 
+            this.clearInputs(els);
+            this.showTab('logTab', els);
+        },
+        renderLogs(els) { 
+            const tests = JSON.parse(localStorage.getItem('poolTests')) || [];
+            if (tests.length === 0) { els.logContainer.innerHTML = `<p class="text-center text-slate-400 py-8">No saved tests yet.</p>`; return; } 
+            els.logContainer.innerHTML = tests.sort((a,b) => b.id - a.id).map(data => {
+                const date = new Date(data.timestamp).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }); 
+                return `<div class="bg-slate-800 p-4 rounded-lg"><div class="flex justify-between items-start"><div><p class="font-bold text-lg text-white">${date}</p></div><button class="delete-btn text-slate-400 hover:text-red-500" data-id="${data.id}"><i data-lucide="trash-2" class="w-5 h-5"></i></button></div><div class="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm"><p><strong class="text-cyan-400">FC:</strong> ${data.fc} ppm</p><p><strong class="text-cyan-400">CC:</strong> ${data.cc} ppm</p><p><strong class="text-cyan-400">pH:</strong> ${data.ph}</p><p><strong class="text-cyan-400">TA:</strong> ${data.ta} ppm</p><p><strong class="text-cyan-400">CH:</strong> ${data.ch} ppm</p><p><strong class="text-cyan-400">CYA:</strong> ${data.cya} ppm</p>${data.bromine ? `<p><strong class="text-cyan-400">Br:</strong> ${data.bromine} ppm</p>` : ''}</div></div>`; 
+            }).join(''); 
+            lucide.createIcons(); 
+        },
+        renderCharts(els) {
+            const docs = JSON.parse(localStorage.getItem('poolTests')) || [];
+            docs.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+            if (docs.length < 2) { els.chartsTab.innerHTML = `<p class="text-center text-slate-400 py-8">Need at least two saved tests to display charts.</p>`; return; } if (!document.getElementById('chlorineChart')) { els.chartsTab.innerHTML = `<div class="bg-slate-800 p-4 rounded-lg shadow-md"><h3 class="font-semibold mb-2 text-center text-white">Chlorine Levels (FC & CC)</h3><canvas id="chlorineChart"></canvas></div><div class="bg-slate-800 p-4 rounded-lg shadow-md"><h3 class="font-semibold mb-2 text-center text-white">pH Level</h3><canvas id="phChart"></canvas></div><div class="grid md:grid-cols-2 gap-6"><div class="bg-slate-800 p-4 rounded-lg shadow-md"><h3 class="font-semibold mb-2 text-center text-white">Total Alkalinity</h3><canvas id="taChart"></canvas></div><div class="bg-slate-800 p-4 rounded-lg shadow-md"><h3 class="font-semibold mb-2 text-center text-white">Calcium Hardness</h3><canvas id="chChart"></canvas></div></div><div class="bg-slate-800 p-4 rounded-lg shadow-md"><h3 class="font-semibold mb-2 text-center text-white">Cyanuric Acid</h3><canvas id="cyaChart"></canvas></div>`; } const labels = docs.map(doc => new Date(doc.timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })); const chartOptions = { responsive: true, maintainAspectRatio: true, scales: { y: { beginAtZero: true, ticks: { color: '#94a3b8' }, grid: { color: '#334155' } }, x: { ticks: { color: '#94a3b8' }, grid: { display: false } } }, plugins: { legend: { labels: { color: '#e2e8f0' } } } }; if (charts.chlorine) charts.chlorine.destroy(); charts.chlorine = new Chart(document.getElementById('chlorineChart'), { type: 'line', data: { labels, datasets: [{ label: 'Free Chlorine (FC)', data: docs.map(d => d.fc), borderColor: '#22d3ee', backgroundColor: 'rgba(34, 211, 238, 0.1)', tension: 0.1, fill: true }, { label: 'Combined Chlorine (CC)', data: docs.map(d => d.cc), borderColor: '#f472b6', backgroundColor: 'rgba(244, 114, 182, 0.1)', tension: 0.1, fill: true }] }, options: chartOptions }); if (charts.ph) charts.ph.destroy(); charts.ph = new Chart(document.getElementById('phChart'), { type: 'line', data: { labels, datasets: [{ label: 'pH', data: docs.map(d => d.ph), borderColor: '#a78bfa', backgroundColor: 'rgba(167, 139, 250, 0.1)', fill: true }] }, options: {...chartOptions, scales: { ...chartOptions.scales, y: { ...chartOptions.scales.y, min: 6.8, max: 8.2 }}} }); [{ id: 'taChart', data: docs.map(d => d.ta), label: 'TA', color: '#4ade80' }, { id: 'chChart', data: docs.map(d => d.ch), label: 'CH', color: '#facc15' }, { id: 'cyaChart', data: docs.map(d => d.cya), label: 'CYA', color: '#fb923c' }].forEach(c => { if (charts[c.id]) charts[c.id].destroy(); const canvas = document.getElementById(c.id); if (canvas) { charts[c.id] = new Chart(canvas, { type: 'line', data: { labels, datasets: [{ label: c.label, data: c.data, borderColor: c.color, backgroundColor: `${c.color}1A`, fill: true, tension: 0.1 }] }, options: chartOptions }); } });
+        },
+        showTab(tabId, els) { 
+            els.tabContents.forEach(c => c.classList.add('hidden')); 
+            document.getElementById(tabId)?.classList.remove('hidden'); 
+            els.tabBtns.forEach(btn => { btn.classList.toggle('bg-cyan-500', btn.dataset.tab === tabId); btn.classList.toggle('text-white', btn.dataset.tab === tabId); btn.classList.toggle('text-slate-300', btn.dataset.tab !== tabId); }); 
+            if (tabId === 'lsiTab') this.calculateLSI(els); 
+            if (tabId === 'actionPlanTab') this.generateActionPlan(els);
+            if (tabId === 'logTab') this.renderLogs(els);
+            if (tabId === 'chartsTab') this.renderCharts(els);
+            lucide.createIcons(); 
+        },
+        updateVisibleTests(kitId) {
+            const testsToShow = KITS[kitId]?.tests || KITS['K-2006'].tests;
+            const allTests = ['chlorine', 'ph', 'ta', 'ch', 'cya', 'bromine'];
+            allTests.forEach(test => {
+                const block = document.getElementById(`test-block-${test}`);
+                if (block) block.style.display = testsToShow.includes(test) ? '' : 'none';
+            });
+        },
+        handleInputChange(els) {
+            const results = this.getResults();
+            this.updateResultDisplays(results);
+            this.updateGauges(results);
+            this.calculateLSI(els);
+        },
+        initializeAppEventListeners(els) {
+            const savedVolume = localStorage.getItem('poolVolume');
+            if(savedVolume) els.poolVolume.value = savedVolume;
+            els.poolVolume.addEventListener('input', () => localStorage.setItem('poolVolume', els.poolVolume.value));
+            
+            els.tabBtns.forEach(btn => btn.addEventListener('click', () => this.showTab(btn.dataset.tab, els)));
+            els.paramInputs.forEach(input => input.addEventListener('input', () => this.handleInputChange(els)));
+            els.saveTestBtn.addEventListener('click', () => this.saveTest(els));
+            
+            els.logContainer.addEventListener('click', (e) => {
+                const button = e.target.closest('.delete-btn');
+                if (button && confirm('Delete this test log?')) {
+                    const testId = parseInt(button.dataset.id);
+                    let tests = JSON.parse(localStorage.getItem('poolTests')) || [];
+                    tests = tests.filter(t => t.id !== testId);
+                    localStorage.setItem('poolTests', JSON.stringify(tests));
+                    this.renderLogs(els);
+                    this.showToast('Log deleted.');
+                }
+            });
+
+            els.recommendationsContainer.addEventListener('change', (e) => {
+                if(e.target.classList.contains('action-dropdown')) {
+                    const V = parseFloat(els.poolVolume.value);
+                    const V10k = V / 10000;
+                    const results = this.getResults();
+                    const actionId = e.target.closest('[data-action-id]').dataset.actionId;
+                    let ppmNeeded = 0;
+                    if(actionId === 'raise_fc') ppmNeeded = (Math.max(2, results.cya * 0.075) - results.fc);
+                    if(actionId === 'raise_ch') ppmNeeded = (250 - results.ch);
+                    if(actionId === 'raise_cya') ppmNeeded = (40 - results.cya);
+                    this.updateDosage(e.target, ppmNeeded, V10k);
+                }
+            });
+
+            els.kitSelector.addEventListener('change', (e) => this.updateVisibleTests(e.target.value));
+            this.updateVisibleTests(els.kitSelector.value);
+        },
+    };
+
+    const startApp = () => {
+        DOMElements.appContent.classList.remove('hidden');
+        DOMElements.mainContent.innerHTML = mainHTML;
+        
+        const dynamicDOMElements = { 
+            tabBtns: document.querySelectorAll('.tab-btn'),
+            tabContents: document.querySelectorAll('.tab-content'),
+            poolVolume: document.getElementById('poolVolume'),
+            paramInputs: document.querySelectorAll('.param-input'),
+            recommendationsContainer: document.getElementById('recommendationsContainer'),
+            saveTestBtn: document.getElementById('saveTestBtn'),
+            logContainer: document.getElementById('logContainer'),
+            chartsTab: document.getElementById('chartsTab'),
+            lsiResultValue: document.getElementById('lsi_result_value'),
+            lsiResultText: document.getElementById('lsi_result_text'),
+            kitSelector: document.getElementById('kitSelector'),
+        };
+        appLogic.initializeAppEventListeners(dynamicDOMElements);
+        const initialResults = appLogic.getResults();
+        appLogic.updateResultDisplays(initialResults);
+        appLogic.updateGauges(initialResults);
+        lucide.createIcons();
+    };
+    
+    startApp();
+});
+</script>
+</body>
+</html>
