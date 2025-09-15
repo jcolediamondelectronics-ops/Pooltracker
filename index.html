@@ -397,113 +397,142 @@ document.addEventListener('DOMContentLoaded', () => {
             const V10k = V / 10000;
             const results = this.getResults();
             
-            const createDropdownHTML = (id, title, status, ppm, options, hasUnits) => {
+            const createActionHTML = (id, title, status, currentVal, defaultTarget, unit, options) => {
                 const chemicalOptions = options.map(opt => `<option value="${opt.id}">${opt.name}</option>`).join('');
-                let unitSelectorHTML = '';
-                if (hasUnits) {
-                    unitSelectorHTML = `<select class="unit-dropdown bg-slate-700 border border-slate-600 rounded-md p-1 text-xs text-white"></select>`;
-                }
-
                 return `
-                    <div class="bg-slate-900/50 p-3 rounded-lg" data-action-id="${id}">
-                        <h3 class="font-bold ${status}">${title} (${ppm})</h3>
-                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2 items-center">
+                    <div class="bg-slate-900/50 p-3 rounded-lg" data-action-id="${id}" data-current-value="${currentVal}">
+                        <h3 class="font-bold ${status}">${title} (${currentVal.toFixed(1)} ${unit})</h3>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-2 items-center">
+                            <div class="flex items-center gap-2">
+                                <label class="text-sm flex-shrink-0">Target:</label>
+                                <input type="number" step="0.1" class="target-input bg-slate-700 border border-slate-600 rounded-md p-1 text-xs w-20 text-white" value="${defaultTarget.toFixed(1)}">
+                                <span class="text-sm">${unit}</span>
+                            </div>
                             <select class="action-dropdown bg-slate-700 border border-slate-600 rounded-md p-1 text-xs text-white">
                                 ${chemicalOptions}
                             </select>
-                            <div class="flex items-center gap-2">
-                                <p class="text-sm">➡️ Add</p>
-                                <strong class="dosage-text text-cyan-400 text-lg"></strong>
-                                ${unitSelectorHTML}
-                            </div>
+                        </div>
+                        <div class="flex items-center gap-2 mt-2">
+                            <p class="text-sm">➡️ Add</p>
+                            <strong class="dosage-text text-cyan-400 text-lg">0.0</strong>
+                            <select class="unit-dropdown bg-slate-700 border border-slate-600 rounded-md p-1 text-xs text-white"></select>
                         </div>
                         <div class="text-xs text-slate-400 mt-1 pl-1 note-text"></div>
                     </div>`;
             };
 
-            if (results.cc >= 0.5) { const targetFC = Math.max(10, results.cya * 0.4); const amountNeeded = targetFC - results.fc; if (amountNeeded > 0) { actions.push({ priority: 1, html: `<div class="bg-red-900/50 p-3 rounded-lg border border-red-500"><h3 class="font-bold text-red-400">High Combined Chlorine - SHOCK REQUIRED</h3><p class="text-sm">Your CC is ${results.cc} ppm. You need to shock the pool to a Free Chlorine level of <strong>${targetFC.toFixed(1)} ppm</strong>.</p><p class="text-sm mt-1">➡️ Use the "Free Chlorine is Low" recommendation below to calculate the required dosage.</p></div>` }); } }
+            if (results.cc >= 0.5) {
+                const shockTarget = Math.max(10, results.cya * 0.4);
+                actions.push({ priority: 1, html: `<div class="bg-red-900/50 p-3 rounded-lg border border-red-500"><h3 class="font-bold text-red-400">High Combined Chlorine - SHOCK REQUIRED</h3><p class="text-sm">Your CC is ${results.cc.toFixed(1)} ppm. You need to shock the pool to a Free Chlorine level of <strong>${shockTarget.toFixed(1)} ppm</strong>.</p><p class="text-sm mt-1">➡️ Use the "Free Chlorine" recommendation below and set the target to ${shockTarget.toFixed(1)} ppm to calculate dosage.</p></div>` });
+            }
             
-            if (results.ta < 80) { actions.push({priority: 2, html: `<div class="bg-slate-900/50 p-3 rounded-lg"><h3 class="font-bold text-orange-400">Total Alkalinity is Low (${results.ta} ppm)</h3><p class="text-sm">➡️ Add <strong>${(1.25 * V10k * (90 - results.ta) / 16).toFixed(1)} lbs</strong> of Baking Soda to raise to 90 ppm.</p></div>`}); } else if (results.ta > 120) { actions.push({priority: 2, html: `<div class="bg-slate-900/50 p-3 rounded-lg"><h3 class="font-bold text-orange-400">Total Alkalinity is High (${results.ta} ppm)</h3><p class="text-sm">To lower, use Muriatic Acid to bring pH to 7.0-7.2, then aerate water to raise pH back up. Repeat if needed.</p></div>`}); } else { actions.push({priority: 2, html: `<div class="bg-slate-900/50 p-3 rounded-lg"><h3 class="font-bold text-green-400">Total Alkalinity is Good (${results.ta} ppm)</h3><p class="text-sm">No action needed.</p></div>`}); }
-
-            if (results.base_demand_drops > 0) { const sodaAsh = results.base_demand_drops * 14 * V10k; actions.push({priority: 3, html: `<div class="bg-slate-900/50 p-3 rounded-lg"><h3 class="font-bold text-orange-400">pH is Low (${results.ph}) - Base Demand Test</h3><p class="text-sm">➡️ Add <strong>${(sodaAsh / 16).toFixed(1)} lbs</strong> of Soda Ash based on your demand test.</p></div>`}); } else if (results.acid_demand_drops > 0) { const acidAmount = results.acid_demand_drops * 12 * V10k; actions.push({priority: 3, html: `<div class="bg-slate-900/50 p-3 rounded-lg"><h3 class="font-bold text-orange-400">pH is High (${results.ph}) - Acid Demand Test</h3><p class="text-sm">➡️ Add <strong>${acidAmount.toFixed(1)} fl oz</strong> of Muriatic Acid (31.45%) based on your demand test.</p></div>`}); } else if (results.ph < 7.2) { const sodaAsh = (7.4 - results.ph) / 0.2 * 6 * V10k; actions.push({priority: 3, html: `<div class="bg-slate-900/50 p-3 rounded-lg"><h3 class="font-bold text-orange-400">pH is Low (${results.ph})</h3><p class="text-sm">➡️ Add <strong>${(sodaAsh / 16).toFixed(1)} lbs</strong> of Soda Ash to raise to 7.4.</p></div>`}); } else if (results.ph > 7.8) { const effectiveTA = results.ta > 0 ? results.ta : 100; const acidAmount = (results.ph - 7.6) / 0.2 * (effectiveTA / 100) * 16 * V10k; const acidNote = results.ta > 0 ? "" : " <em class='text-xs text-slate-400'>(Note: Assuming 100 ppm TA.)</em>"; actions.push({priority: 3, html: `<div class="bg-slate-900/50 p-3 rounded-lg"><h3 class="font-bold text-orange-400">pH is High (${results.ph})</h3><p class="text-sm">➡️ Add <strong>${acidAmount.toFixed(1)} fl oz</strong> of Muriatic Acid (31.45%) to lower to 7.6.${acidNote}</p></div>`}); } else { actions.push({priority: 3, html: `<div class="bg-slate-900/50 p-3 rounded-lg"><h3 class="font-bold text-green-400">pH is Good (${results.ph})</h3><p class="text-sm">No action needed.</p></div>`}); }
-            
-            const targetFC = Math.max(2, results.cya * 0.075);
+            const targetFC = Math.max(3, results.cya * 0.075);
             if (results.fc < targetFC) { 
-                actions.push({
-                    priority: 4,
-                    html: createDropdownHTML('raise_fc', 'Free Chlorine is Low', 'text-orange-400', `${results.fc} ppm`, [
-                        {id: 'pool_essentials_chlorine', name: 'Pool Essentials Liquid Chlorine'},
-                        {id: 'hth_shock', name: 'HTH Pool Shock'}
-                    ], true),
-                    data: { ppmNeeded: targetFC - results.fc, V10k }
-                });
-            } else if (actions.every(a => a.priority !== 1)) {
-                actions.push({priority: 4, html: `<div class="bg-slate-900/50 p-3 rounded-lg"><h3 class="font-bold text-green-400">Free Chlorine is Good (${results.fc} ppm)</h3><p class="text-sm">Ideal FC for your CYA is ~${targetFC.toFixed(1)} ppm. No action needed.</p></div>`});
+                actions.push({ priority: 4, html: createActionHTML('raise_fc', 'Free Chlorine is Low', 'text-orange-400', results.fc, targetFC, 'ppm', [
+                    {id: 'pool_essentials_chlorine', name: 'Pool Essentials Liquid Chlorine'},
+                    {id: 'hth_shock', name: 'HTH Pool Shock'}
+                ])});
+            } else {
+                 actions.push({priority: 4, html: `<div class="bg-slate-900/50 p-3 rounded-lg"><h3 class="font-bold text-green-400">Free Chlorine is Good (${results.fc.toFixed(1)} ppm)</h3><p class="text-sm">Ideal FC for your CYA is ~${targetFC.toFixed(1)} ppm. No action needed.</p></div>`});
+            }
+            
+            if (results.ph > 7.8) {
+                actions.push({ priority: 3, html: createActionHTML('lower_ph', 'pH is High', 'text-orange-400', results.ph, 7.6, '', [ {id: 'muriatic_acid', name: 'Muriatic Acid (31.45%)'} ])});
+            } else if (results.ph < 7.2) {
+                 actions.push({ priority: 3, html: createActionHTML('raise_ph', 'pH is Low', 'text-orange-400', results.ph, 7.4, '', [ {id: 'soda_ash', name: 'Soda Ash'} ])});
+            } else {
+                 actions.push({priority: 3, html: `<div class="bg-slate-900/50 p-3 rounded-lg"><h3 class="font-bold text-green-400">pH is Good (${results.ph.toFixed(1)})</h3><p class="text-sm">No action needed.</p></div>`});
+            }
+
+            if (results.ta > 120) {
+                 actions.push({ priority: 2, html: createActionHTML('lower_ta', 'Total Alkalinity is High', 'text-orange-400', results.ta, 100, 'ppm', [ {id: 'muriatic_acid', name: 'Muriatic Acid'} ])});
+            } else if (results.ta < 80) {
+                actions.push({ priority: 2, html: createActionHTML('raise_ta', 'Total Alkalinity is Low', 'text-orange-400', results.ta, 90, 'ppm', [ {id: 'baking_soda', name: 'Baking Soda'} ])});
+            } else {
+                actions.push({priority: 2, html: `<div class="bg-slate-900/50 p-3 rounded-lg"><h3 class="font-bold text-green-400">Total Alkalinity is Good (${results.ta} ppm)</h3><p class="text-sm">No action needed.</p></div>`});
             }
 
             if (results.ch < 200) { 
-                actions.push({
-                    priority: 5,
-                    html: createDropdownHTML('raise_ch', 'Calcium Hardness is Low', 'text-yellow-400', `${results.ch} ppm`, [
-                        {id: 'clorox_ch', name: 'Clorox Calcium Hardness Increaser'}
-                    ], true),
-                    data: { ppmNeeded: 250 - results.ch, V10k }
-                });
+                actions.push({ priority: 5, html: createActionHTML('raise_ch', 'Calcium Hardness is Low', 'text-yellow-400', results.ch, 250, 'ppm', [ {id: 'clorox_ch', name: 'Clorox Calcium Increaser'} ])});
             } else if (results.ch > 400) { actions.push({priority: 5, html: `<div class="bg-slate-900/50 p-3 rounded-lg"><h3 class="font-bold text-yellow-400">Calcium Hardness is High (${results.ch} ppm)</h3><p class="text-sm">The only way to lower CH is to partially drain and refill the pool with fresh water.</p></div>`}); }
             
             if (results.cya < 30) { 
-                actions.push({
-                    priority: 5,
-                    html: createDropdownHTML('raise_cya', 'Cyanuric Acid is Low', 'text-yellow-400', `${results.cya} ppm`, [
-                        {id: 'clorox_cya', name: 'Clorox Stabilizer'}
-                    ], true),
-                    data: { ppmNeeded: 40 - results.cya, V10k }
-                });
+                actions.push({ priority: 5, html: createActionHTML('raise_cya', 'Cyanuric Acid is Low', 'text-yellow-400', results.cya, 40, 'ppm', [ {id: 'clorox_cya', name: 'Clorox Stabilizer'} ])});
             } else if (results.cya > 80) { actions.push({priority: 5, html: `<div class="bg-slate-900/50 p-3 rounded-lg"><h3 class="font-bold text-yellow-400">Cyanuric Acid is High (${results.cya} ppm)</h3><p class="text-sm">The only way to lower CYA is to partially drain and refill the pool with fresh water.</p></div>`}); }
             
             els.recommendationsContainer.innerHTML = actions.sort((a, b) => a.priority - b.priority).map(a => a.html).join('');
             
-            actions.forEach(action => {
-                if(action.data) {
-                    const id = action.html.match(/data-action-id="([^"]+)"/)[1];
-                    const container = els.recommendationsContainer.querySelector(`[data-action-id="${id}"]`);
-                    if(container) {
-                        this.updateDosage(container, action.data.ppmNeeded, action.data.V10k);
-                    }
-                }
+            els.recommendationsContainer.querySelectorAll('[data-action-id]').forEach(container => {
+                const currentValue = parseFloat(container.dataset.currentValue);
+                this.updateDosage(container, currentValue, V10k, results);
             });
         },
-        updateDosage(container, ppmNeeded, V10k) {
+        updateDosage(container, currentValue, V10k, results) {
             const actionId = container.dataset.actionId;
             const chemicalSelect = container.querySelector('.action-dropdown');
             const unitSelect = container.querySelector('.unit-dropdown');
             const dosageSpan = container.querySelector('.dosage-text');
             const noteSpan = container.querySelector('.note-text');
+            const targetInput = container.querySelector('.target-input');
+            
+            const targetValue = parseFloat(targetInput.value) || 0;
+            let ppmNeeded = targetValue - currentValue;
+
+            // For pH, ppmNeeded is just the pH point difference
+            if (actionId === 'raise_ph' || actionId === 'lower_ph') {
+                ppmNeeded = Math.abs(targetValue - currentValue);
+            }
 
             const previouslySelectedUnit = unitSelect.value;
             let baseAmount = 0;
             let unitOptions = [];
             noteSpan.textContent = '';
 
-            if (actionId === 'raise_fc') {
-                if (chemicalSelect.value === 'pool_essentials_chlorine') {
-                    baseAmount = V10k * ppmNeeded * 13; // base unit in fl oz
-                    unitOptions = [['fl oz', 1], ['mL', 29.5735], ['Gallons', 1/128]];
-                } else if (chemicalSelect.value === 'hth_shock') {
-                    baseAmount = V10k * (ppmNeeded / 6.3) * 16; // base unit in oz (weight)
-                    unitOptions = [['oz', 1], ['lbs', 1/16]];
-                    noteSpan.textContent = 'Note: HTH Shock is a Cal-Hypo product and will also raise Calcium Hardness.';
-                }
-            } else if (actionId === 'raise_ch') {
-                if (chemicalSelect.value === 'clorox_ch') {
+            if (ppmNeeded <= 0 && actionId !== 'lower_ph' && actionId !== 'lower_ta') {
+                dosageSpan.textContent = '0.0';
+                unitSelect.innerHTML = '';
+                return;
+            }
+
+            switch(actionId) {
+                case 'raise_fc':
+                    if (chemicalSelect.value === 'pool_essentials_chlorine') {
+                        baseAmount = V10k * ppmNeeded * 13; // base unit in fl oz
+                        unitOptions = [['fl oz', 1], ['mL', 29.5735], ['Gallons', 1/128]];
+                    } else if (chemicalSelect.value === 'hth_shock') {
+                        baseAmount = V10k * (ppmNeeded / 6.3) * 16; // base unit in oz (weight)
+                        unitOptions = [['oz', 1], ['lbs', 1/16]];
+                        noteSpan.textContent = 'Note: HTH Shock is a Cal-Hypo product and will also raise Calcium Hardness.';
+                    }
+                    break;
+                case 'raise_ch':
                     baseAmount = V10k * (ppmNeeded / 10) * 1 * 16; // 1lb per 10ppm -> base unit in oz (weight)
                     unitOptions = [['oz', 1], ['lbs', 1/16]];
-                }
-            } else if (actionId === 'raise_cya') {
-                 if (chemicalSelect.value === 'clorox_cya') {
+                    break;
+                case 'raise_cya':
                     baseAmount = V10k * (ppmNeeded / 10) * (1 / 1.2) * 16; // 1lb per 12k gal -> 1/1.2 = 0.833lb per 10k. base in oz.
                     unitOptions = [['oz', 1], ['lbs', 1/16]];
-                }
+                    break;
+                case 'raise_ta':
+                    baseAmount = 1.4 * V10k * ppmNeeded; // base unit in oz
+                    unitOptions = [['oz', 1], ['lbs', 1/16]];
+                    break;
+                case 'lower_ta':
+                    ppmNeeded = currentValue - targetValue; // Recalculate for lowering
+                    if (ppmNeeded <= 0) { baseAmount = 0; } else { baseAmount = 26 * V10k * (ppmNeeded / 10); } // base unit in fl oz
+                    unitOptions = [['fl oz', 1], ['mL', 29.5735]];
+                    noteSpan.textContent = 'Note: This will also lower your pH.';
+                    break;
+                 case 'raise_ph':
+                    baseAmount = (ppmNeeded / 0.2) * 6 * V10k; // base unit in oz
+                    unitOptions = [['oz', 1], ['lbs', 1/16]];
+                    break;
+                case 'lower_ph':
+                    const effectiveTA = results.ta > 0 ? results.ta : 100;
+                    baseAmount = (ppmNeeded / 0.2) * (effectiveTA / 100) * 16 * V10k; // base unit in fl oz
+                    unitOptions = [['fl oz', 1], ['mL', 29.5735]];
+                    if (results.ta === 0) noteSpan.textContent = 'Note: Assumes 100 ppm TA for calculation.';
+                    break;
             }
             
             unitSelect.innerHTML = unitOptions.map(u => `<option value="${u[0]}">${u[0]}</option>`).join('');
@@ -615,20 +644,19 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 }
             });
-
-            els.recommendationsContainer.addEventListener('change', (e) => {
-                if(e.target.classList.contains('action-dropdown') || e.target.classList.contains('unit-dropdown')) {
-                    const V = parseFloat(els.poolVolume.value);
-                    const V10k = V / 10000;
-                    const results = this.getResults();
-                    const container = e.target.closest('[data-action-id]');
-                    const actionId = container.dataset.actionId;
-                    let ppmNeeded = 0;
-                    if(actionId === 'raise_fc') ppmNeeded = (Math.max(2, results.cya * 0.075) - results.fc);
-                    if(actionId === 'raise_ch') ppmNeeded = (250 - results.ch);
-                    if(actionId === 'raise_cya') ppmNeeded = (40 - results.cya);
-                    this.updateDosage(container, ppmNeeded, V10k);
-                }
+            
+            ['change', 'input'].forEach(eventType => {
+                els.recommendationsContainer.addEventListener(eventType, (e) => {
+                    if (e.target.matches('.action-dropdown, .unit-dropdown, .target-input')) {
+                        const V = parseFloat(els.poolVolume.value);
+                        const V10k = V / 10000;
+                        const results = this.getResults();
+                        const container = e.target.closest('[data-action-id]');
+                        if (!container) return;
+                        const currentValue = parseFloat(container.dataset.currentValue);
+                        this.updateDosage(container, currentValue, V10k, results);
+                    }
+                });
             });
 
             els.kitSelector.addEventListener('change', (e) => this.updateVisibleTests(e.target.value));
