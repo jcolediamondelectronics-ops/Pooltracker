@@ -7,6 +7,9 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
     <style>
         body { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
         details > summary { list-style: none; }
@@ -47,6 +50,9 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', () => {
+    let db, auth;
+    let userId = null;
+    let testDataUnsubscribe = null;
     const charts = {};
     const appId = 'default-pool-tracker-standalone';
     
@@ -458,29 +464,46 @@ document.addEventListener('DOMContentLoaded', () => {
             }); 
             this.handleInputChange(els); 
         },
-        saveTest(els) { 
+        async saveTest(els) { 
             const results = this.getResults();
-            const newTest = { ...results, id: Date.now(), timestamp: new Date().toISOString() };
-            let tests = JSON.parse(localStorage.getItem('poolTests')) || [];
-            tests.push(newTest);
-            localStorage.setItem('poolTests', JSON.stringify(tests));
-            this.showToast('Test saved locally!'); 
-            this.clearInputs(els);
-            this.showTab('logTab', els);
+            try { 
+                await db.collection(`users/${userId}/poolTests`).add({ ...results, timestamp: firebase.firestore.Timestamp.now() }); 
+                this.showToast('Test saved to cloud!'); 
+                this.clearInputs(els);
+                this.showTab('logTab', els); 
+            } catch (error) { 
+                console.error("Error saving test:", error); 
+                alert("Could not save test to the cloud. Check console for errors."); 
+            }
         },
-        renderLogs(els) { 
-            const tests = JSON.parse(localStorage.getItem('poolTests')) || [];
-            if (tests.length === 0) { els.logContainer.innerHTML = `<p class="text-center text-slate-400 py-8">No saved tests yet.</p>`; return; } 
-            els.logContainer.innerHTML = tests.sort((a,b) => b.id - a.id).map(data => {
-                const date = new Date(data.timestamp).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }); 
-                return `<div class="bg-slate-800 p-4 rounded-lg"><div class="flex justify-between items-start"><div><p class="font-bold text-lg text-white">${date}</p></div><button class="delete-btn text-slate-400 hover:text-red-500" data-id="${data.id}"><i data-lucide="trash-2" class="w-5 h-5"></i></button></div><div class="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm"><p><strong class="text-cyan-400">FC:</strong> ${data.fc} ppm</p><p><strong class="text-cyan-400">CC:</strong> ${data.cc} ppm</p><p><strong class="text-cyan-400">pH:</strong> ${data.ph}</p><p><strong class="text-cyan-400">TA:</strong> ${data.ta} ppm</p><p><strong class="text-cyan-400">CH:</strong> ${data.ch} ppm</p><p><strong class="text-cyan-400">CYA:</strong> ${data.cya} ppm</p>${data.bromine ? `<p><strong class="text-cyan-400">Br:</strong> ${data.bromine} ppm</p>` : ''}</div></div>`; 
+        renderLogs(docs, els) { 
+            if (docs.length === 0) { els.logContainer.innerHTML = `<p class="text-center text-slate-400 py-8">No saved tests yet.</p>`; return; } 
+            
+            const sortedDocs = [...docs].sort((a,b) => b.data().timestamp - a.data().timestamp);
+
+            els.logContainer.innerHTML = sortedDocs.map(doc => {
+                const data = doc.data(); 
+                const date = data.timestamp.toDate().toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }); 
+                return `<div class="bg-slate-800 p-4 rounded-lg"><div class="flex justify-between items-start"><div><p class="font-bold text-lg text-white">${date}</p></div><button class="delete-btn text-slate-400 hover:text-red-500" data-id="${doc.id}"><i data-lucide="trash-2" class="w-5 h-5"></i></button></div><div class="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm"><p><strong class="text-cyan-400">FC:</strong> ${data.fc} ppm</p><p><strong class="text-cyan-400">CC:</strong> ${data.cc} ppm</p><p><strong class="text-cyan-400">pH:</strong> ${data.ph}</p><p><strong class="text-cyan-400">TA:</strong> ${data.ta} ppm</p><p><strong class="text-cyan-400">CH:</strong> ${data.ch} ppm</p><p><strong class="text-cyan-400">CYA:</strong> ${data.cya} ppm</p>${data.bromine ? `<p><strong class="text-cyan-400">Br:</strong> ${data.bromine} ppm</p>` : ''}</div></div>`; 
             }).join(''); 
             lucide.createIcons(); 
         },
-        renderCharts(els) {
-            const docs = JSON.parse(localStorage.getItem('poolTests')) || [];
-            docs.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-            if (docs.length < 2) { els.chartsTab.innerHTML = `<p class="text-center text-slate-400 py-8">Need at least two saved tests to display charts.</p>`; return; } if (!document.getElementById('chlorineChart')) { els.chartsTab.innerHTML = `<div class="bg-slate-800 p-4 rounded-lg shadow-md"><h3 class="font-semibold mb-2 text-center text-white">Chlorine Levels (FC & CC)</h3><canvas id="chlorineChart"></canvas></div><div class="bg-slate-800 p-4 rounded-lg shadow-md"><h3 class="font-semibold mb-2 text-center text-white">pH Level</h3><canvas id="phChart"></canvas></div><div class="grid md:grid-cols-2 gap-6"><div class="bg-slate-800 p-4 rounded-lg shadow-md"><h3 class="font-semibold mb-2 text-center text-white">Total Alkalinity</h3><canvas id="taChart"></canvas></div><div class="bg-slate-800 p-4 rounded-lg shadow-md"><h3 class="font-semibold mb-2 text-center text-white">Calcium Hardness</h3><canvas id="chChart"></canvas></div></div><div class="bg-slate-800 p-4 rounded-lg shadow-md"><h3 class="font-semibold mb-2 text-center text-white">Cyanuric Acid</h3><canvas id="cyaChart"></canvas></div>`; } const labels = docs.map(doc => new Date(doc.timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })); const chartOptions = { responsive: true, maintainAspectRatio: true, scales: { y: { beginAtZero: true, ticks: { color: '#94a3b8' }, grid: { color: '#334155' } }, x: { ticks: { color: '#94a3b8' }, grid: { display: false } } }, plugins: { legend: { labels: { color: '#e2e8f0' } } } }; if (charts.chlorine) charts.chlorine.destroy(); charts.chlorine = new Chart(document.getElementById('chlorineChart'), { type: 'line', data: { labels, datasets: [{ label: 'Free Chlorine (FC)', data: docs.map(d => d.fc), borderColor: '#22d3ee', backgroundColor: 'rgba(34, 211, 238, 0.1)', tension: 0.1, fill: true }, { label: 'Combined Chlorine (CC)', data: docs.map(d => d.cc), borderColor: '#f472b6', backgroundColor: 'rgba(244, 114, 182, 0.1)', tension: 0.1, fill: true }] }, options: chartOptions }); if (charts.ph) charts.ph.destroy(); charts.ph = new Chart(document.getElementById('phChart'), { type: 'line', data: { labels, datasets: [{ label: 'pH', data: docs.map(d => d.ph), borderColor: '#a78bfa', backgroundColor: 'rgba(167, 139, 250, 0.1)', fill: true }] }, options: {...chartOptions, scales: { ...chartOptions.scales, y: { ...chartOptions.scales.y, min: 6.8, max: 8.2 }}} }); [{ id: 'taChart', data: docs.map(d => d.ta), label: 'TA', color: '#4ade80' }, { id: 'chChart', data: docs.map(d => d.ch), label: 'CH', color: '#facc15' }, { id: 'cyaChart', data: docs.map(d => d.cya), label: 'CYA', color: '#fb923c' }].forEach(c => { if (charts[c.id]) charts[c.id].destroy(); const canvas = document.getElementById(c.id); if (canvas) { charts[c.id] = new Chart(canvas, { type: 'line', data: { labels, datasets: [{ label: c.label, data: c.data, borderColor: c.color, backgroundColor: `${c.color}1A`, fill: true, tension: 0.1 }] }, options: chartOptions }); } });
+        renderCharts(docs, els) {
+            if (docs.length < 2) { els.chartsTab.innerHTML = `<p class="text-center text-slate-400 py-8">Need at least two saved tests to display charts.</p>`; return; } 
+            
+            const sortedDocs = [...docs].sort((a, b) => a.data().timestamp - b.data().timestamp);
+
+            if (!document.getElementById('chlorineChart')) { els.chartsTab.innerHTML = `<div class="bg-slate-800 p-4 rounded-lg shadow-md"><h3 class="font-semibold mb-2 text-center text-white">Chlorine Levels (FC & CC)</h3><canvas id="chlorineChart"></canvas></div><div class="bg-slate-800 p-4 rounded-lg shadow-md"><h3 class="font-semibold mb-2 text-center text-white">pH Level</h3><canvas id="phChart"></canvas></div><div class="grid md:grid-cols-2 gap-6"><div class="bg-slate-800 p-4 rounded-lg shadow-md"><h3 class="font-semibold mb-2 text-center text-white">Total Alkalinity</h3><canvas id="taChart"></canvas></div><div class="bg-slate-800 p-4 rounded-lg shadow-md"><h3 class="font-semibold mb-2 text-center text-white">Calcium Hardness</h3><canvas id="chChart"></canvas></div></div><div class="bg-slate-800 p-4 rounded-lg shadow-md"><h3 class="font-semibold mb-2 text-center text-white">Cyanuric Acid</h3><canvas id="cyaChart"></canvas></div>`; } 
+            const labels = sortedDocs.map(doc => doc.data().timestamp.toDate().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })); 
+            const chartOptions = { responsive: true, maintainAspectRatio: true, scales: { y: { beginAtZero: true, ticks: { color: '#94a3b8' }, grid: { color: '#334155' } }, x: { ticks: { color: '#94a3b8' }, grid: { display: false } } }, plugins: { legend: { labels: { color: '#e2e8f0' } } } }; 
+            
+            if (charts.chlorine) charts.chlorine.destroy(); 
+            charts.chlorine = new Chart(document.getElementById('chlorineChart'), { type: 'line', data: { labels, datasets: [{ label: 'Free Chlorine (FC)', data: sortedDocs.map(d => d.data().fc), borderColor: '#22d3ee', backgroundColor: 'rgba(34, 211, 238, 0.1)', tension: 0.1, fill: true }, { label: 'Combined Chlorine (CC)', data: sortedDocs.map(d => d.data().cc), borderColor: '#f472b6', backgroundColor: 'rgba(244, 114, 182, 0.1)', tension: 0.1, fill: true }] }, options: chartOptions }); 
+            
+            if (charts.ph) charts.ph.destroy(); 
+            charts.ph = new Chart(document.getElementById('phChart'), { type: 'line', data: { labels, datasets: [{ label: 'pH', data: sortedDocs.map(d => d.data().ph), borderColor: '#a78bfa', backgroundColor: 'rgba(167, 139, 250, 0.1)', fill: true }] }, options: {...chartOptions, scales: { ...chartOptions.scales, y: { ...chartOptions.scales.y, min: 6.8, max: 8.2 }}} }); 
+            
+            [{ id: 'taChart', data: sortedDocs.map(d => d.data().ta), label: 'TA', color: '#4ade80' }, { id: 'chChart', data: sortedDocs.map(d => d.data().ch), label: 'CH', color: '#facc15' }, { id: 'cyaChart', data: sortedDocs.map(d => d.data().cya), label: 'CYA', color: '#fb923c' }].forEach(c => { if (charts[c.id]) charts[c.id].destroy(); const canvas = document.getElementById(c.id); if (canvas) { charts[c.id] = new Chart(canvas, { type: 'line', data: { labels, datasets: [{ label: c.label, data: c.data, borderColor: c.color, backgroundColor: `${c.color}1A`, fill: true, tension: 0.1 }] }, options: chartOptions }); } });
         },
         showTab(tabId, els) { 
             els.tabContents.forEach(c => c.classList.add('hidden')); 
@@ -488,9 +511,15 @@ document.addEventListener('DOMContentLoaded', () => {
             els.tabBtns.forEach(btn => { btn.classList.toggle('bg-cyan-500', btn.dataset.tab === tabId); btn.classList.toggle('text-white', btn.dataset.tab === tabId); btn.classList.toggle('text-slate-300', btn.dataset.tab !== tabId); }); 
             if (tabId === 'lsiTab') this.calculateLSI(els); 
             if (tabId === 'actionPlanTab') this.generateActionPlan(els);
-            if (tabId === 'logTab') this.renderLogs(els);
-            if (tabId === 'chartsTab') this.renderCharts(els);
             lucide.createIcons(); 
+        },
+        attachFirestoreListener(els) { 
+            if (testDataUnsubscribe) testDataUnsubscribe(); 
+            const q = db.collection(`users/${userId}/poolTests`).orderBy("timestamp", "desc"); 
+            testDataUnsubscribe = q.onSnapshot((snapshot) => { 
+                this.renderLogs(snapshot.docs, els); 
+                this.renderCharts(snapshot.docs, els); 
+            }, console.error); 
         },
         updateVisibleTests(kitId) {
             const testsToShow = KITS[kitId]?.tests || KITS['K-2006'].tests;
@@ -515,15 +544,15 @@ document.addEventListener('DOMContentLoaded', () => {
             els.paramInputs.forEach(input => input.addEventListener('input', () => this.handleInputChange(els)));
             els.saveTestBtn.addEventListener('click', () => this.saveTest(els));
             
-            els.logContainer.addEventListener('click', (e) => {
+            els.logContainer.addEventListener('click', async (e) => {
                 const button = e.target.closest('.delete-btn');
                 if (button && confirm('Delete this test log?')) {
-                    const testId = parseInt(button.dataset.id);
-                    let tests = JSON.parse(localStorage.getItem('poolTests')) || [];
-                    tests = tests.filter(t => t.id !== testId);
-                    localStorage.setItem('poolTests', JSON.stringify(tests));
-                    this.renderLogs(els);
-                    this.showToast('Log deleted.');
+                    try { 
+                        await db.collection(`users/${userId}/poolTests`).doc(button.dataset.id).delete();
+                        this.showToast('Log deleted from cloud.'); 
+                    } catch (error) { 
+                        console.error("Error deleting doc:", error); 
+                    }
                 }
             });
 
@@ -546,31 +575,68 @@ document.addEventListener('DOMContentLoaded', () => {
         },
     };
 
-    const startApp = () => {
+    const startApp = (firebaseConfig) => {
         DOMElements.appContent.classList.remove('hidden');
         DOMElements.mainContent.innerHTML = mainHTML;
         
-        const dynamicDOMElements = { 
-            tabBtns: document.querySelectorAll('.tab-btn'),
-            tabContents: document.querySelectorAll('.tab-content'),
-            poolVolume: document.getElementById('poolVolume'),
-            paramInputs: document.querySelectorAll('.param-input'),
-            recommendationsContainer: document.getElementById('recommendationsContainer'),
-            saveTestBtn: document.getElementById('saveTestBtn'),
-            logContainer: document.getElementById('logContainer'),
-            chartsTab: document.getElementById('chartsTab'),
-            lsiResultValue: document.getElementById('lsi_result_value'),
-            lsiResultText: document.getElementById('lsi_result_text'),
-            kitSelector: document.getElementById('kitSelector'),
-        };
-        appLogic.initializeAppEventListeners(dynamicDOMElements);
-        const initialResults = appLogic.getResults();
-        appLogic.updateResultDisplays(initialResults);
-        appLogic.updateGauges(initialResults);
-        lucide.createIcons();
+        try {
+            firebase.initializeApp(firebaseConfig);
+            auth = firebase.auth();
+            db = firebase.firestore();
+        } catch (e) {
+            console.error("Firebase initialization failed:", e);
+            DOMElements.mainContent.innerHTML = `<p class="text-center text-red-400">Error: Could not connect to the database. The Firebase configuration may be invalid.</p>`;
+            return;
+        }
+
+        auth.onAuthStateChanged(async (user) => {
+            if (user) {
+                userId = user.uid;
+            } else {
+                try {
+                    await auth.signInAnonymously();
+                    return; // onAuthStateChanged will re-trigger with the new anonymous user
+                } catch (error) {
+                     console.error("Anonymous sign-in failed:", error);
+                     DOMElements.mainContent.innerHTML = `<p class="text-center text-red-400">Error: Could not authenticate. Check Firebase settings to ensure Anonymous Sign-in is enabled.</p>`;
+                     return;
+                }
+            }
+            
+            const dynamicDOMElements = { 
+                tabBtns: document.querySelectorAll('.tab-btn'),
+                tabContents: document.querySelectorAll('.tab-content'),
+                poolVolume: document.getElementById('poolVolume'),
+                paramInputs: document.querySelectorAll('.param-input'),
+                recommendationsContainer: document.getElementById('recommendationsContainer'),
+                saveTestBtn: document.getElementById('saveTestBtn'),
+                logContainer: document.getElementById('logContainer'),
+                chartsTab: document.getElementById('chartsTab'),
+                lsiResultValue: document.getElementById('lsi_result_value'),
+                lsiResultText: document.getElementById('lsi_result_text'),
+                kitSelector: document.getElementById('kitSelector'),
+            };
+            appLogic.initializeAppEventListeners(dynamicDOMElements);
+            appLogic.attachFirestoreListener(dynamicDOMElements);
+            const initialResults = appLogic.getResults();
+            appLogic.updateResultDisplays(initialResults);
+            appLogic.updateGauges(initialResults);
+            lucide.createIcons();
+        });
     };
     
-    startApp();
+    // Your provided Firebase configuration is placed here.
+    const firebaseConfig = {
+      "apiKey": "AIzaSyAi0owbv39_7h5sQnxU0xT-tiDjCgh5Pio",
+      "authDomain": "test-2090e.firebaseapp.com",
+      "projectId": "test-2090e",
+      "storageBucket": "test-2090e.firebasestorage.app",
+      "messagingSenderId": "252265050701",
+      "appId": "1:252265050701:web:781e3181a0391ad1ade204",
+      "measurementId": "G-1CGQWTE555"
+    };
+
+    startApp(firebaseConfig);
 });
 </script>
 </body>
